@@ -11,6 +11,10 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach binaries to (defaults to the triggering tag)"
+        required: false
 
 permissions:
   contents: write # create the GitHub release and upload assets
@@ -73,19 +77,21 @@ jobs:
           sha256sum renef-android-arm64.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Attach to release (tag runs)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true
           files: |
-            renef-android-arm64.tar.gz
-            SHA256SUMS.txt
+            renef-src/renef-android-arm64.tar.gz
+            renef-src/SHA256SUMS.txt
 
-      - name: Upload workflow artifact (manual runs)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload workflow artifact (manual runs without a tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag == ''
         uses: actions/upload-artifact@v4
         with:
           name: renef-android-arm64
           path: |
-            renef-android-arm64.tar.gz
-            SHA256SUMS.txt
+            renef-src/renef-android-arm64.tar.gz
+            renef-src/SHA256SUMS.txt
