@@ -60,8 +60,10 @@ upstream's work (MIT, credited in their sections below).
 
 **Server lifecycle** (no session needed)
 
-- `renef_server_deploy()` — push the built `renef_server` and `libagent.so` to the
-  device, set permissions and the SELinux context the agent needs, verify by md5
+- `renef_server_deploy(source)` — push `renef_server` + `libagent.so` to the
+  device, set permissions and the SELinux context the agent needs, verify by md5.
+  With the default `source="auto"` it prefers a local Renef build and otherwise
+  downloads the pinned, CI-built binaries (SHA-verified) — no NDK required
 - `renef_server_start()` / `renef_server_stop()` / `renef_server_restart()` —
   root-managed lifecycle with ping verification
 - `renef_server_logs(lines)` — tail the server log on the device
@@ -147,7 +149,15 @@ code.
 
 ## Usage
 
-Requirements: Python 3.10+, `adb`, and Renef built for the device. Build once:
+Requirements: Python 3.10+, `adb`, and a rooted ARM64 device. The Renef binaries
+themselves you have two ways to get:
+
+- **No build needed.** `renef_server_deploy()` downloads `renef_server` and
+  `libagent.so` that CI builds from the pinned renef source (see
+  `renef_mcp/BINARIES_PIN`), SHA-verified against the release's checksums, and
+  caches them under `~/.cache/android-renef-mcp/`.
+- **Build your own.** If you want binaries from your own checkout (useful while
+  hacking on Renef itself):
 
 ```bash
 cd ~/github/renef
@@ -183,9 +193,10 @@ Or the JSON form most clients accept:
 }
 ```
 
-After that you don't need to touch adb yourself: `renef_server_deploy()` pushes
-the built binaries, `renef_server_start()` starts the server as root and sets up
-the port forward, and `renef_status()` confirms the chain. If you'd rather do it
+After that you don't need to touch adb yourself: `renef_server_deploy()` gets
+the binaries (downloaded or local) onto the device, `renef_server_start()`
+starts the server as root and sets up the port forward, and `renef_status()`
+confirms the chain. If you'd rather do it
 by hand, the old route still works:
 
 ```bash

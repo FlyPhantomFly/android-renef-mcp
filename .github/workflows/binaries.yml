@@ -1,0 +1,91 @@
+name: Build renef device binaries
+
+# Builds renef_server + libagent.so from the renef source pinned in
+# renef_mcp/BINARIES_PIN, using the same NDK version validated locally, and
+# attaches them to the matching GitHub release. renef_server_deploy()
+# downloads these when no local build exists — so the wheel itself stays
+# ~100 KB and no unaudited ELF blobs ride along in a pip package.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the GitHub release and upload assets
+
+jobs:
+  build-binaries:
+    name: renef_server + libagent.so (pinned source, NDK r27c)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pinned renef source
+        id: pin
+        run: |
+          echo "Building from $(cat renef_mcp/BINARIES_PIN)"
+          echo "commit=$(sed 's/.*@//' renef_mcp/BINARIES_PIN)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned renef source
+        uses: actions/checkout@v4
+        with:
+          repository: Ahmeth4n/renef
+          ref: ${{ steps.pin.outputs.commit }}
+          path: renef-src
+
+      - name: Install Android NDK r27c
+        run: |
+          curl -sL -o ndk.zip https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q ndk.zip -d "$GITHUB_WORKSPACE/ndk"
+          echo "NDK=$GITHUB_WORKSPACE/ndk/android-ndk-r27c" >> "$GITHUB_ENV"
+
+      # capstone 5.0.3's default `make all` also cross-builds its test suite,
+      # which dies in the linker (OOM) on CI runners. The library itself is
+      # unaffected: disable only the tests, library sources and flags unchanged.
+      - name: Disable capstone test binaries (library unchanged)
+        run: |
+          cd renef-src
+          python3 - <<'EOF'
+          from pathlib import Path
+          mk = Path("Makefile")
+          text = mk.read_text()
+          old = "\t\t-DCMAKE_POSITION_INDEPENDENT_CODE=ON\n"
+          new = "\t\t-DCMAKE_POSITION_INDEPENDENT_CODE=ON \\\n\t\t-DCAPSTONE_BUILD_TESTS=OFF\n"
+          assert text.count(old) == 1, "capstone cmake line not found exactly once"
+          mk.write_text(text.replace(old, new))
+          EOF
+
+      - name: Build renef_server and libagent.so
+        run: |
+          cd renef-src
+          make NDK="$NDK" server payload
+          ls -la build/android
+
+      - name: Package
+        run: |
+          cd renef-src
+          mkdir stage
+          cp build/android/renef_server build/android/libagent.so stage/
+          cp LICENSE stage/LICENSE-renef.txt
+          tar czf renef-android-arm64.tar.gz -C stage renef_server libagent.so LICENSE-renef.txt
+          sha256sum renef-android-arm64.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attach to release (tag runs)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            renef-android-arm64.tar.gz
+            SHA256SUMS.txt
+
+      - name: Upload workflow artifact (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: renef-android-arm64
+          path: |
+            renef-android-arm64.tar.gz
+            SHA256SUMS.txt

@@ -182,15 +182,80 @@ def renef_list_processes() -> str:
 # server lifecycle tools (adb only, no session needed)
 # ---------------------------------------------------------------------------
 
-def _bin_dir() -> Path:
-    """Directory holding the built renef_server/libagent.so.
+def _package_version() -> str:
+    """This package's version (used to locate the matching binaries release)."""
+    from importlib.metadata import PackageNotFoundError, version
 
-    RENEF_BIN_DIR wins if set; otherwise the local Renef checkout's build output.
+    try:
+        return version("android-renef-mcp")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
+def _download_binaries() -> Path:
+    """Fetch the pinned, CI-built renef binaries for this package version.
+
+    Trust chain: the binaries are built by this repo's GitHub Actions from the
+    renef source pinned in ``renef_mcp/BINARIES_PIN``, attached to the release
+    matching this package version, and verified here against the SHA256SUMS.txt
+    published alongside them.
     """
+    import hashlib
+    import shutil
+    import tarfile
+    import urllib.request
+
+    tag = "v" + _package_version()
+    cache = Path.home() / ".cache" / "android-renef-mcp" / tag
+    server_bin, agent_bin = cache / "renef_server", cache / "libagent.so"
+    if server_bin.is_file() and agent_bin.is_file():
+        return cache
+
+    def _fetch(url: str, dest: Path) -> None:
+        with urllib.request.urlopen(url, timeout=180) as resp, open(dest, "wb") as f:
+            shutil.copyfileobj(resp, f)
+
+    cache.mkdir(parents=True, exist_ok=True)
+    base = f"https://github.com/FlyPhantomFly/android-renef-mcp/releases/download/{tag}"
+    tarball, sums = cache / "renef-android-arm64.tar.gz", cache / "SHA256SUMS.txt"
+    _fetch(f"{base}/renef-android-arm64.tar.gz", tarball)
+    _fetch(f"{base}/SHA256SUMS.txt", sums)
+
+    expected = None
+    for line in sums.read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].rstrip("*").endswith("renef-android-arm64.tar.gz"):
+            expected = parts[0]
+    digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    if not expected or digest != expected:
+        shutil.rmtree(cache, ignore_errors=True)
+        raise RenefError(
+            "downloaded renef-android-arm64.tar.gz failed SHA256 verification "
+            f"(sha256 {digest}, expected {expected or 'none'}); refusing to deploy"
+        )
+
+    with tarfile.open(tarball) as tf:
+        tf.extractall(cache, filter="data")
+    if not (server_bin.is_file() and agent_bin.is_file()):
+        shutil.rmtree(cache, ignore_errors=True)
+        raise RenefError("downloaded archive did not contain renef_server and libagent.so")
+    return cache
+
+
+def _resolve_bin_dir(source: str) -> tuple[Path, str]:
+    """Where the deployable binaries live, per ``source`` mode. Returns (dir, how)."""
     env = os.environ.get("RENEF_BIN_DIR", "").strip()
     if env:
-        return Path(env).expanduser().resolve()
-    return config.renef_home() / "build" / "android"
+        return Path(env).expanduser().resolve(), "RENEF_BIN_DIR"
+    local = config.renef_home() / "build" / "android"
+    if (local / "renef_server").is_file() and source in ("auto", "build"):
+        return local, "local build"
+    if source in ("auto", "download"):
+        return _download_binaries(), "downloaded pinned CI build"
+    raise FileNotFoundError(
+        f"no local renef build at {local} and source='build' requires one "
+        f"(cd {config.renef_home()} && make, or set RENEF_BIN_DIR)"
+    )
 
 
 def _server_pid() -> str:
@@ -201,21 +266,26 @@ def _server_pid() -> str:
 
 
 @mcp.tool()
-def renef_server_deploy() -> str:
-    """Push the built renef_server + libagent.so to the device and chmod +x them.
-    Binaries come from RENEF_BIN_DIR or <RENEF_HOME>/build/android (make build first).
-    Pushes under a temp name and renames as root: a direct overwrite of libagent.so
-    fails with "Permission denied" while a target process has it mapped."""
+def renef_server_deploy(source: str = "auto") -> str:
+    """Push the built renef_server + libagent.so to the device, set permissions
+    and the SELinux context the agent needs, and verify by md5.
+    source="auto" (default): prefer a local build (RENEF_BIN_DIR, else
+    <RENEF_HOME>/build/android); if none exists, download the pinned CI-built
+    binaries from this package's GitHub release and SHA256-verify them.
+    source="build": require the local build. source="download": always download."""
+    source = str(source).strip().lower()
+    if source not in ("auto", "build", "download"):
+        raise ValueError("source must be 'auto', 'build' or 'download'")
     import hashlib
 
-    bdir = _bin_dir()
+    bdir, how = _resolve_bin_dir(source)
     server = bdir / "renef_server"
     agent = bdir / "libagent.so"
     for path in (server, agent):
         if not path.is_file():
             raise FileNotFoundError(
-                f"{path} not found. Build Renef first (cd {config.renef_home()} && make), "
-                "or set RENEF_BIN_DIR to a directory containing renef_server and libagent.so."
+                f"{path} not found (source={source}, resolved via {how}). "
+                "Build Renef first (cd <RENEF_HOME> && make) or use source='download'."
             )
     adb.run_adb("push", str(server), SERVER_BIN + ".new", timeout=120)
     adb.run_adb("push", str(agent), AGENT_BIN + ".new", timeout=120)
@@ -256,6 +326,7 @@ def renef_server_deploy() -> str:
         else:
             results.append(f"{remote_path}: MD5 MISMATCH (got {got or 'none'})")
     results.append(f"agent path {AGENT_BIN} matches this build's RENEF_PAYLOAD_PATH")
+    results.append(f"binaries: {how} ({bdir})")
     try:
         ctx = adb.run_adb("shell", f"su -c 'ls -Z {AGENT_BIN}'", timeout=15).split()[0]
         if "app_data_file" not in ctx:
