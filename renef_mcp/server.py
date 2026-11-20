@@ -1,4 +1,4 @@
-"""renef-mcp: MCP server exposing Renef to AI agents (stdio transport).
+"""android-renef-mcp: MCP server exposing Renef to AI agents (stdio transport).
 
 Architecture notes (important for maintenance):
 - renef_server on the device is a SINGLE-CLIENT TCP server. renef-mcp keeps one

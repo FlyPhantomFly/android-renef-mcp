@@ -1,4 +1,4 @@
-# renef-mcp
+# android-renef-mcp
 
 An MCP server for [Renef](https://renef.io), a Frida-like dynamic instrumentation
 toolkit for Android ARM64. With it, an AI agent can attach to a process on a
@@ -129,12 +129,20 @@ cd ~/github/renef
 make                # produces build/android/renef_server and libagent.so
 ```
 
-Then install this package and register it with your MCP client:
+Then install this package and register it with your MCP client. Once it's on
+PyPI this is just:
 
 ```bash
-cd ~/github/renef-mcp
+pip install android-renef-mcp
+claude mcp add renef -- android-renef-mcp
+```
+
+From a source checkout meanwhile:
+
+```bash
+cd ~/github/android-renef-mcp
 uv sync
-claude mcp add renef -- uv run --directory ~/github/renef-mcp renef-mcp
+claude mcp add renef -- uv run --directory ~/github/android-renef-mcp android-renef-mcp
 ```
 
 Or the JSON form most clients accept:
@@ -144,7 +152,7 @@ Or the JSON form most clients accept:
   "mcpServers": {
     "renef": {
       "command": "uv",
-      "args": ["run", "--directory", "/home/<you>/github/renef-mcp", "renef-mcp"]
+      "args": ["run", "--directory", "/home/<you>/github/android-renef-mcp", "android-renef-mcp"]
     }
   }
 }
