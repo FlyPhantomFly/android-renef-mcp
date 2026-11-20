@@ -10,6 +10,8 @@ jobs:
   pypi-publish:
     name: Build and publish to PyPI (trusted publishing)
     runs-on: ubuntu-latest
+    # Matches the trusted publisher registered on PyPI (environment: pypi).
+    environment: pypi
     permissions:
       # Required for PyPI trusted publishing (OIDC).
       id-token: write
