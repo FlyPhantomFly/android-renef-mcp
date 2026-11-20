@@ -25,6 +25,31 @@ That matters for apps whose protections look for Frida.
                                                           └─────────────────┘
 ```
 
+## Differences from renef-mcp
+
+There is already an MCP server for Renef:
+[ahmeth4n/renef-mcp](https://github.com/ahmeth4n/renef-mcp) on PyPI (that's also
+where the name `renef-mcp` is taken). This package exists because its core is
+built differently, and after running both against a real device, differently in
+ways that matter:
+
+| | android-renef-mcp (this package) | renef-mcp (ahmeth4n, 0.3.0) |
+|---|---|---|
+| Talking to the device | Speaks the `renef_server` TCP protocol directly, over an adb forward | Launches the desktop `renef` CLI as a subprocess and scrapes its `renef>` prompt |
+| Multi-line Lua | Native, sent in one write | Broken; needs a second hex-encoding tool as a workaround |
+| Response framing | Every exec carries a nonce marker, runs exactly once, and times out loudly | Blind waits for the prompt; a hook firing mid-response bleeds into the next tool's output |
+| Spawn | Real startup gating (ptrace pause), first exec resumes it | Sends the legacy `--hook=` flag the server strips and ignores |
+| Memory search | `'DEADBEEF'` searches those bytes; spaced and wildcard patterns validated | `'DEADBEEF'` searches the ASCII text of that string — a silent wrong answer |
+| Native hooks | Lua callbacks (`onEnter`/`onLeave`), PLT/GOT via `caller=` | The `hookn` command, which installs no callbacks |
+| Tests | 45-check end-to-end suite over real MCP stdio | None |
+
+Upstream also ships ~9.5 MB of prebuilt host binaries and runs on Linux/macOS
+only; this package is ~100 KB of Python and runs anywhere Python and adb do.
+
+Credit where due: the server lifecycle tools, framework detection, the Lua
+script library and the SSL-pinning knowledge base here are adapted from
+upstream's work (MIT, credited in their sections below).
+
 ## Tools (38)
 
 **Status and discovery** (no target needed)
@@ -196,6 +221,7 @@ standalone source.
 
 ## License
 
-Apache-2.0 for the code. The bundled Lua scripts and technique documents come
-from [ahmeth4n/renef-mcp](https://github.com/ahmeth4n/renef-mcp) and are MIT
-(license texts live in `renef_mcp/scripts/` and `renef_mcp/techniques/`).
+Apache-2.0, © 2026 FlyPhantomFly. The bundled Lua scripts and technique
+documents come from [ahmeth4n/renef-mcp](https://github.com/ahmeth4n/renef-mcp)
+and are MIT (© 2025 Byteria; license texts live in `renef_mcp/scripts/` and
+`renef_mcp/techniques/`).

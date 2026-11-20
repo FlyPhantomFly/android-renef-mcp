@@ -5,7 +5,7 @@ description = "MCP server for Renef - dynamic instrumentation toolkit for Androi
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-authors = [{ name = "android-renef-mcp contributors" }]
+authors = [{ name = "FlyPhantomFly" }]
 keywords = ["renef", "mcp", "android", "instrumentation", "reverse-engineering", "frida", "lua"]
 dependencies = [
     "mcp>=1.12.0,<2",
