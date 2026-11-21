@@ -1,15 +1,8 @@
 # android-renef-mcp
 
-An MCP server for [Renef](https://renef.io), a Frida-like dynamic instrumentation
-toolkit for Android ARM64. With it, an AI agent can attach to a process on a
-rooted device (or spawn one, held paused at startup), run Lua inside the target,
-hook native and Java methods, read and write process memory, and collect hook
-output.
+An MCP server for [Renef](https://renef.io), a Frida-like dynamic instrumentation toolkit for Android ARM64. With it, an AI agent can attach to a process on a rooted device (or spawn one, held paused at startup), run Lua inside the target, hook native and Java methods, read and write process memory, and collect hook output.
 
-Renef is not Frida: the agent runs Lua instead of JavaScript, the API is its own
-(`hook()`, `Module.*`, `Memory.*`, `Java.use`, `Syscall.trace`), and nothing
-frida-related has to be on the device. Just `renef_server` and a rooted handset.
-That matters for apps whose protections look for Frida.
+Renef runs Lua instead of JavaScript, the API is its own (`hook()`, `Module.*`, `Memory.*`, `Java.use`, `Syscall.trace`), and nothing frida-related has to be on the device. Just the `renef_server` and a rooted phone.
 
 ```
 ┌──────────────┐   stdio/MCP   ┌─────────────┐  TCP :1907   ┌───────────────┐
@@ -28,9 +21,7 @@ That matters for apps whose protections look for Frida.
 ## Differences from renef-mcp
 
 There is already an MCP server for Renef:
-[ahmeth4n/renef-mcp](https://github.com/ahmeth4n/renef-mcp) on PyPI (that's also
-where the name `renef-mcp` is taken). This package exists because its core is
-built differently, and after running both against a real device, differently in
+[ahmeth4n/renef-mcp](https://github.com/ahmeth4n/renef-mcp) on PyPI. This package exists because its core is built differently, and after running both against a real device, differently in
 ways that matter:
 
 | | android-renef-mcp (this package) | renef-mcp (ahmeth4n, 0.3.0) |
@@ -85,10 +76,7 @@ upstream's work (MIT, credited in their sections below).
 
 **Memory**
 
-- `renef_mem_scan(pattern, module)` — scan for a hex pattern. Prefer
-  `module="libfoo.so"`, which uses Lua `Memory.search` and takes spaces and `??`
-  wildcards. Without a module it's the upstream full-process scan: compact hex
-  only, and big processes can outrun the server's ~10s response cap
+- `renef_mem_scan(pattern, module)` — scan for a hex pattern. Prefer `module="libfoo.so"`, which uses Lua `Memory.search` and takes spaces and `??` wildcards. Without a module it's the upstream full-process scan: compact hex only, and big processes can outrun the server's ~10s response cap
 - `renef_mem_read(addr, size)` — hexdump, up to 4096 bytes
 - `renef_mem_read_value(addr, size, signed)` — integer read, 1/2/4/8 bytes
 - `renef_mem_read_string(addr, max_len)` — NUL-terminated C string
@@ -152,15 +140,14 @@ code.
 Requirements: Python 3.10+, `adb`, and a rooted ARM64 device. The Renef binaries
 themselves you have two ways to get:
 
-- **No build needed.** `renef_server_deploy()` downloads `renef_server` and
-  `libagent.so` that CI builds from the pinned renef source (see
-  `renef_mcp/BINARIES_PIN`), SHA-verified against the release's checksums, and
-  caches them under `~/.cache/android-renef-mcp/`.
+- **No build needed.** `renef_server_deploy()` downloads `renef_server` and `libagent.so` that CI builds from the pinned renef source (see
+  `renef_mcp/BINARIES_PIN`), SHA-verified against the release's checksums, and caches them under `~/.cache/android-renef-mcp/`.
 - **Build your own.** If you want binaries from your own checkout (useful while
   hacking on Renef itself):
 
 ```bash
-cd ~/github/renef
+git clone https://github.com/FlyPhantomFly/android-renef-mcp
+cd android-renef-mcp
 make                # produces build/android/renef_server and libagent.so
 ```
 
@@ -169,13 +156,16 @@ PyPI this is just:
 
 ```bash
 pip install android-renef-mcp
+```
+```bash
 claude mcp add renef -- android-renef-mcp
 ```
 
 From a source checkout meanwhile:
 
 ```bash
-cd ~/github/android-renef-mcp
+git clone https://github.com/FlyPhantomFly/android-renef-mcp
+cd android-renef-mcp
 uv sync
 claude mcp add renef -- uv run --directory ~/github/android-renef-mcp android-renef-mcp
 ```
@@ -187,7 +177,7 @@ Or the JSON form most clients accept:
   "mcpServers": {
     "renef": {
       "command": "uv",
-      "args": ["run", "--directory", "/home/<you>/github/android-renef-mcp", "android-renef-mcp"]
+      "args": ["run", "--directory", "/home/<you>/android-renef-mcp", "android-renef-mcp"]
     }
   }
 }
