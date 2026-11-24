@@ -14,7 +14,6 @@ from pathlib import Path
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 1907
-FORWARD_LOCAL = "tcp:1907"
 # Abstract UDS socket the on-device server listens on (see renef Makefile install target)
 FORWARD_REMOTE = "localabstract:com.android.internal.os.RuntimeInit"
 

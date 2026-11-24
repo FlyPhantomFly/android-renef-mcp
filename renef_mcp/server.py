@@ -84,9 +84,12 @@ def _hexdump(data: bytes, base: int) -> str:
 
 def _to_int(value: str, what: str) -> int:
     try:
-        return int(value, 0)  # accepts 0x.. and decimal
+        result = int(value, 0)  # accepts 0x.. and decimal
     except (TypeError, ValueError) as e:
         raise ValueError(f"{what} must be an integer (dec or 0x-prefixed), got {value!r}") from e
+    if result < 0:
+        raise ValueError(f"{what} must be non-negative, got {value!r}")
+    return result
 
 
 def _format_symbols(items: list, filter_sub: str, limit: int) -> str:
@@ -122,11 +125,10 @@ def _status_text() -> str:
     else:
         lines.append(f"adb forward: n/a (direct TCP to {config.host()})")
 
-    def _ping(client) -> bool:
-        return client.ping()
-
+    # Probe over a separate short-lived socket: a status check must never
+    # touch (let alone close) the client that owns the live target session.
     try:
-        reachable = bool(MANAGER.call(_ping))
+        reachable = adb.ping_server()
         lines.append(f"renef_server ping: {'pong (reachable)' if reachable else 'NO RESPONSE'}")
         if not reachable:
             lines.append(
@@ -182,14 +184,34 @@ def renef_list_processes() -> str:
 # server lifecycle tools (adb only, no session needed)
 # ---------------------------------------------------------------------------
 
+def _parse_md5sums(text: str) -> dict[str, str]:
+    """Parse `md5sum` output, tolerating the binary-mode `*path` form."""
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            # binary mode is "hash *path" (star BEFORE the path); be lenient
+            # and also tolerate a trailing star from other implementations.
+            out[parts[1].lstrip("*").rstrip("*")] = parts[0]
+    return out
+
+
+def _extract_archive_legacy(tf, dest: Path) -> None:
+    """Safe extraction for Python 3.10.0-3.10.11 / 3.11.0-3.11.3 (no PEP 706)."""
+    root = dest.resolve()
+    for member in tf.getmembers():
+        target = (root / member.name).resolve()
+        if (not str(target).startswith(str(root) + os.sep)
+                or member.issym() or member.islnk() or member.isdev()):
+            raise RenefError(f"unsafe archive member: {member.name}")
+    tf.extractall(dest)
+
+
 def _package_version() -> str:
     """This package's version (used to locate the matching binaries release)."""
-    from importlib.metadata import PackageNotFoundError, version
+    from renef_mcp import __version__
 
-    try:
-        return version("android-renef-mcp")
-    except PackageNotFoundError:
-        return "0.1.0"
+    return __version__
 
 
 def _download_binaries() -> Path:
@@ -215,27 +237,43 @@ def _download_binaries() -> Path:
         with urllib.request.urlopen(url, timeout=180) as resp, open(dest, "wb") as f:
             shutil.copyfileobj(resp, f)
 
+    def _sha256(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def _expected_hash(sums: Path) -> str | None:
+        hashes = _parse_md5sums(sums.read_text(encoding="utf-8"))
+        return next((v for k, v in hashes.items()
+                     if k.endswith("renef-android-arm64.tar.gz")), None)
+
     cache.mkdir(parents=True, exist_ok=True)
     base = f"https://github.com/FlyPhantomFly/android-renef-mcp/releases/download/{tag}"
     tarball, sums = cache / "renef-android-arm64.tar.gz", cache / "SHA256SUMS.txt"
-    _fetch(f"{base}/renef-android-arm64.tar.gz", tarball)
-    _fetch(f"{base}/SHA256SUMS.txt", sums)
 
-    expected = None
-    for line in sums.read_text(encoding="utf-8").splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[1].rstrip("*").endswith("renef-android-arm64.tar.gz"):
-            expected = parts[0]
-    digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
-    if not expected or digest != expected:
+    # Cached files are re-verified on every use (a corrupted extraction must
+    # never be deployed). Only the small checksum file is fetched if it is
+    # missing; the tarball is re-downloaded if anything is stale.
+    if not (server_bin.is_file() and agent_bin.is_file()
+            and tarball.is_file() and sums.is_file()
+            and _sha256(tarball) == _expected_hash(sums)):
+        _fetch(f"{base}/renef-android-arm64.tar.gz", tarball)
+        _fetch(f"{base}/SHA256SUMS.txt", sums)
+
+    expected = _expected_hash(sums)
+    if not expected or _sha256(tarball) != expected:
         shutil.rmtree(cache, ignore_errors=True)
         raise RenefError(
             "downloaded renef-android-arm64.tar.gz failed SHA256 verification "
-            f"(sha256 {digest}, expected {expected or 'none'}); refusing to deploy"
+            f"(sha256 {_sha256(tarball)}, expected {expected or 'none'}); refusing to deploy"
         )
 
+    def _extract(tf) -> None:
+        try:
+            tf.extractall(cache, filter="data")  # PEP 706, Python >= 3.12 / backports
+        except TypeError:
+            _extract_archive_legacy(tf, cache)
+
     with tarfile.open(tarball) as tf:
-        tf.extractall(cache, filter="data")
+        _extract(tf)
     if not (server_bin.is_file() and agent_bin.is_file()):
         shutil.rmtree(cache, ignore_errors=True)
         raise RenefError("downloaded archive did not contain renef_server and libagent.so")
@@ -244,13 +282,17 @@ def _download_binaries() -> Path:
 
 def _resolve_bin_dir(source: str) -> tuple[Path, str]:
     """Where the deployable binaries live, per ``source`` mode. Returns (dir, how)."""
+    if source == "download":
+        # An explicit download request must not be silently overridden by
+        # RENEF_BIN_DIR (documented as "always download").
+        return _download_binaries(), "downloaded pinned CI build"
     env = os.environ.get("RENEF_BIN_DIR", "").strip()
     if env:
         return Path(env).expanduser().resolve(), "RENEF_BIN_DIR"
     local = config.renef_home() / "build" / "android"
     if (local / "renef_server").is_file() and source in ("auto", "build"):
         return local, "local build"
-    if source in ("auto", "download"):
+    if source == "auto":
         return _download_binaries(), "downloaded pinned CI build"
     raise FileNotFoundError(
         f"no local renef build at {local} and source='build' requires one "
@@ -313,11 +355,7 @@ def renef_server_deploy(source: str = "auto") -> str:
         return h.hexdigest()
 
     remote = adb.run_adb("shell", f"su -c 'md5sum {SERVER_BIN} {AGENT_BIN}'", timeout=60)
-    hashes = {}
-    for line in remote.splitlines():
-        parts = line.split()
-        if len(parts) == 2:
-            hashes[parts[1]] = parts[0]
+    hashes = _parse_md5sums(remote)
     results = []
     for local, remote_path in ((server, SERVER_BIN), (agent, AGENT_BIN)):
         got = hashes.get(remote_path, "")
@@ -589,7 +627,9 @@ def renef_mem_write(addr: str, hex_bytes: str) -> str:
     """Write raw bytes to target memory. hex_bytes: hex string, spaces allowed, e.g. "1F 20 03 D5"."""
     _require_session()
     address = _to_int(addr, "addr")
-    clean = "".join(hex_bytes.split()).replace("0x", "")
+    clean = "".join(hex_bytes.split())
+    if clean.startswith(("0x", "0X")):
+        clean = clean[2:]  # only a single leading prefix; bytes.fromhex validates the rest
     if not clean or len(clean) % 2 != 0:
         raise ValueError("hex_bytes must be a non-empty even-length hex string")
     try:
@@ -639,7 +679,9 @@ def renef_mem_patch(addr: str, hex_bytes: str) -> str:
     cannot touch). hex_bytes: hex string, spaces allowed."""
     _require_session()
     address = _to_int(addr, "addr")
-    clean = "".join(hex_bytes.split()).replace("0x", "")
+    clean = "".join(hex_bytes.split())
+    if clean.startswith(("0x", "0X")):
+        clean = clean[2:]  # only a single leading prefix; bytes.fromhex validates the rest
     if not clean or len(clean) % 2 != 0:
         raise ValueError("hex_bytes must be a non-empty even-length hex string")
     try:

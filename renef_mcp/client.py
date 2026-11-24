@@ -252,11 +252,17 @@ class RenefClient:
     # -- server-level commands ----------------------------------------------
 
     def ping(self) -> bool:
+        """Probe the server without touching session state.
+
+        A transient error must not call close(): ping shares the client with
+        the live target, and close() would drop pid/target_label and make
+        every subsequent tool report "No active target" even though the
+        instrumented process is still running.
+        """
         try:
             return "pong" in self._command("ping", quiet_seconds=0.2, total_cap=3.0,
                                            first_line_fast=True)
         except (RenefError, OSError):
-            self.close()
             return False
 
     def resume(self) -> str:
@@ -336,7 +342,7 @@ class RenefClient:
             _, partial = self._interpret_exec(raw, nonce)
             detail = (
                 "exec timed out: completion marker not seen "
-                f"(no data for ~6s; overall limit {total_cap:g}s). "
+                f"(overall limit {total_cap:g}s, ~6s silence limit). "
                 "The script may still be running; it was not retried to avoid "
                 "duplicate execution."
             )
@@ -413,15 +419,25 @@ class RenefClient:
         raw = self._command("ms " + compact, quiet_seconds=0.5, total_cap=12.0,
                             resync=True)
         text = raw.strip()
-        if not text or "No response from agent" in text:
+        clean = text.lstrip().lower()
+        # The upstream formatter can return partial JSON (which it reports as
+        # "Error parsing response") or a JSON error object formatted as
+        # "Error: ...". Anything that is not a complete formatted result can
+        # leave late bytes queued in the agent socket -> resync next command.
+        complete = (text.startswith("No matches found.")
+                    or (clean.startswith("found ")
+                        and "match(es):" in clean
+                        and text.rstrip().endswith(("-" * 60))))
+        if not text or "No response from agent" in text or not complete:
             self._needs_resync = True
+        if not text or "No response from agent" in text:
             raise RenefError(
                 "full-process scan exceeded the upstream server's ~10s response cap. "
                 "The scan may still be running; its late output will be discarded on "
                 "the next command. Re-run with module='libfoo.so' for a reliable "
                 "module-scoped scan (supports spaces and ?? wildcards)."
             )
-        if text.lstrip().lower().startswith("error") or "error parsing" in text.lower():
+        if clean.startswith("error") or "error parsing" in clean:
             raise RenefError(f"memscan failed: {text}")
         return text
 

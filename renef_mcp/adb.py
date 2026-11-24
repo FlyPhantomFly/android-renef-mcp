@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import socket
 import subprocess
-from functools import lru_cache
 
 from renef_mcp import config
 
@@ -32,9 +31,8 @@ def run_adb(*args: str, timeout: float = 20.0) -> str:
     return proc.stdout
 
 
-@lru_cache(maxsize=8)
 def device_serials() -> tuple[str, ...]:
-    """Serials of devices in 'device' state (cached per process, short-lived)."""
+    """Serials of devices in 'device' state (always fresh: a device can be attached later)."""
     out = run_adb("devices")
     serials = []
     for line in out.splitlines()[1:]:

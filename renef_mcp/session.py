@@ -60,6 +60,11 @@ class SessionManager:
         return self._client  # type: ignore[return-value]
 
     def attach(self, pid: int) -> int:
+        # Mirror spawn(): validate before _reset_client() so a bad pid does
+        # not tear down a healthy live session.
+        pid = int(pid)
+        if pid <= 0:
+            raise ValueError(f"pid must be positive, got {pid}")
         with self._lock:
             self._reset_client()
             client = self.client()
