@@ -6,8 +6,8 @@ Renef runs Lua instead of JavaScript, the API is its own (`hook()`, `Module.*`, 
 
 ```
 ┌──────────────┐   stdio/MCP   ┌─────────────┐  TCP :1907   ┌───────────────┐
-│ MCP client   │ ◄───────────► │  renef-mcp  │ ◄──────────► │ renef_server  │
-│ (AI agent)   │               │ (this pkg)  │  (adb fwd)   │ on device(adb)│
+│ MCP client   │ ◄───────────► │android-renef│ ◄──────────► │ renef_server  │
+│ (AI agent)   │               │    -mcp     │  (adb fwd)   │ on device(adb)│
 └──────────────┘               └─────────────┘              └──────┬────────┘
                                                                    │ agent socket
                                                                    ▼
@@ -146,13 +146,13 @@ themselves you have two ways to get:
   hacking on Renef itself):
 
 ```bash
-git clone https://github.com/FlyPhantomFly/android-renef-mcp
-cd android-renef-mcp
+git clone https://github.com/Ahmeth4n/renef
+cd renef
 make                # produces build/android/renef_server and libagent.so
 ```
 
-Then install this package and register it with your MCP client. Once it's on
-PyPI this is just:
+Then install this package and register it with your MCP client. It's on PyPI,
+so this is all you need:
 
 ```bash
 pip install android-renef-mcp
@@ -220,8 +220,8 @@ are eleven worked challenges in
 [`scripts/Frida_Labs_Examples`](scripts/Frida_Labs_Examples/). Each one is a
 Frida_Labs exercise translated to Renef Lua, with a step-by-step solution next
 to it. All eleven were verified twice on a rooted ARM64 device — Java hooks,
-native hooks, reflection, and a couple of hand-patched ARM64 instructions when
-Renef had no direct API for the call.
+native hooks, reflection, and one hand-patched ARM64 bridge when Renef had no
+direct API for the call.
 
 ## Planned integration
 
