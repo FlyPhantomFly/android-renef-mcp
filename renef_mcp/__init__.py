@@ -6,4 +6,4 @@ try:
     __version__ = version("android-renef-mcp")
 except PackageNotFoundError:
     # Keep in sync with pyproject.toml [project].version.
-    __version__ = "0.1.1"
+    __version__ = "0.1.2"
