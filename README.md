@@ -223,6 +223,22 @@ to it. All eleven were verified twice on a rooted ARM64 device — Java hooks,
 native hooks, reflection, and one hand-patched ARM64 bridge when Renef had no
 direct API for the call.
 
+## Local development
+
+A small Makefile wraps the usual loop (it is not the Renef build — device
+binaries are built in the renef checkout as shown above):
+
+```
+make test          # 62 offline unit tests, no device needed
+make e2e           # 45-check suite on a connected device
+make check         # compileall + unit tests
+make wheel         # sdist + wheel into dist/
+make lab N=0x4     # run one Frida_Labs verification live
+```
+
+`tests/`, `skills/` and `reports/` are gitignored; on a fresh clone the test
+targets say so instead of failing.
+
 ## Planned integration
 
 This server is planned for integration into
