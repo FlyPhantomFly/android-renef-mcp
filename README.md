@@ -6,8 +6,8 @@ Renef runs Lua instead of JavaScript, the API is its own (`hook()`, `Module.*`, 
 
 ```
 ┌──────────────┐   stdio/MCP   ┌─────────────┐  TCP :1907   ┌───────────────┐
-│ MCP client   │ ◄───────────► │  renef-mcp  │ ◄──────────► │ renef_server  │
-│ (AI agent)   │               │ (this pkg)  │  (adb fwd)   │ on device(adb)│
+│ MCP client   │ ◄───────────► │android-renef│ ◄──────────► │ renef_server  │
+│ (AI agent)   │               │    -mcp     │  (adb fwd)   │ on device(adb)│
 └──────────────┘               └─────────────┘              └──────┬────────┘
                                                                    │ agent socket
                                                                    ▼
@@ -146,13 +146,13 @@ themselves you have two ways to get:
   hacking on Renef itself):
 
 ```bash
-git clone https://github.com/FlyPhantomFly/android-renef-mcp
-cd android-renef-mcp
+git clone https://github.com/Ahmeth4n/renef
+cd renef
 make                # produces build/android/renef_server and libagent.so
 ```
 
-Then install this package and register it with your MCP client. Once it's on
-PyPI this is just:
+Then install this package and register it with your MCP client. It's on PyPI,
+so this is all you need:
 
 ```bash
 pip install android-renef-mcp
@@ -212,6 +212,32 @@ renef_watch(5)
 renef_unhook("all")
 renef_disconnect()
 ```
+
+## Worked examples
+
+If you want to see what the tools actually look like on a real target, there
+are eleven worked challenges in
+[`scripts/Frida_Labs_Examples`](scripts/Frida_Labs_Examples/). Each one is a
+Frida_Labs exercise translated to Renef Lua, with a step-by-step solution next
+to it. All eleven were verified twice on a rooted ARM64 device — Java hooks,
+native hooks, reflection, and one hand-patched ARM64 bridge when Renef had no
+direct API for the call.
+
+## Local development
+
+A small Makefile wraps the usual loop (it is not the Renef build — device
+binaries are built in the renef checkout as shown above):
+
+```
+make test          # 62 offline unit tests, no device needed
+make e2e           # 45-check suite on a connected device
+make check         # compileall + unit tests
+make wheel         # sdist + wheel into dist/
+make lab N=0x4     # run one Frida_Labs verification live
+```
+
+`tests/`, `skills/` and `reports/` are gitignored; on a fresh clone the test
+targets say so instead of failing.
 
 ## Planned integration
 
