@@ -23,22 +23,15 @@ gated process. Nothing else needs to be attached.
 ## Challenge 0xA
 
 The flag is produced by a native function `_Z8get_flagii` in
-`libfrida0xa.so`. Frida calls it with `new NativeFunction(base.add(0x18BB0),
-'void', ['int','int'])` and passes `(1, 2)` because the function checks that the
-sum is 3.
+`libfrida0xa.so`. The Frida solution calls it with `new NativeFunction(...)` —
+and since Renef 0.4.0, Renef has the exact same API, so this is now a direct
+translation. The function checks that the two arguments sum to `3`; we pass
+`(1, 2)`.
 
-Renef has no `NativeFunction`, so there is nothing to call from Lua. What the
-app *does* call is `stringFromJNI()`, whose native entry is at `0x1dbe0`. We
-patch its first twelve bytes with three ARM64 instructions:
-
-```
-mov w0, #1   ; 20 00 80 52
-mov w1, #2   ; 41 00 80 52
-b  0x1dd60  ; 5e 00 00 14   (branch to get_flag from 0x1dbe8)
-```
-
-`Memory.patch` handles the page protection for us. The next time the app calls
-`stringFromJNI()`, it jumps into `get_flag(1,2)` instead.
+On agents older than 0.4.0 there is no `NativeFunction`; the fallback there is
+to patch the entry of `stringFromJNI()` (which the app does call) with three
+hand-encoded ARM64 instructions that set `w0=1`, `w1=2` and branch to
+`get_flag`.
 
 ```lua
 -- Frida Labs 0xA: Renef has no NativeFunction, so instead of calling

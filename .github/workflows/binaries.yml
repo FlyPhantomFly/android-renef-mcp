@@ -35,7 +35,7 @@ jobs:
       - name: Check out pinned renef source
         uses: actions/checkout@v4
         with:
-          repository: Ahmeth4n/renef
+          repository: Byterialab/renef
           ref: ${{ steps.pin.outputs.commit }}
           path: renef-src
 

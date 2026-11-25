@@ -146,7 +146,7 @@ themselves you have two ways to get:
   hacking on Renef itself):
 
 ```bash
-git clone https://github.com/Ahmeth4n/renef
+git clone https://github.com/Byterialab/renef
 cd renef
 make                # produces build/android/renef_server and libagent.so
 ```
