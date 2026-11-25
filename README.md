@@ -213,6 +213,16 @@ renef_unhook("all")
 renef_disconnect()
 ```
 
+## Worked examples
+
+If you want to see what the tools actually look like on a real target, there
+are eleven worked challenges in
+[`scripts/Frida_Labs_Examples`](scripts/Frida_Labs_Examples/). Each one is a
+Frida_Labs exercise translated to Renef Lua, with a step-by-step solution next
+to it. All eleven were verified twice on a rooted ARM64 device — Java hooks,
+native hooks, reflection, and a couple of hand-patched ARM64 instructions when
+Renef had no direct API for the call.
+
 ## Planned integration
 
 This server is planned for integration into
